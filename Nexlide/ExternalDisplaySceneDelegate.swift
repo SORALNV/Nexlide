@@ -23,6 +23,7 @@ final class ExternalDisplaySceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
 
         PresentationStore.shared.externalDisplayActive = true
+        PresentationStore.shared.updateExternalDisplayPixelSize(from: windowScene)
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {

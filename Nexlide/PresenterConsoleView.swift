@@ -25,11 +25,7 @@ struct PresenterConsoleView: View {
                         NotePinEditorPanel()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if showsMainSlidesOnly {
-                        HStack(spacing: 12) {
-                            SlidePreviewPanel(title: "Now", pageIndex: store.currentPageIndex)
-                            SlidePreviewPanel(title: "Next", pageIndex: store.currentPageIndex + 1)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        AdjustableSlidePreviewPair()
                     } else {
                         HStack(spacing: 10) {
                             slidePreviewColumn(width: geometry.size.width * (showsPageSidebar ? 0.36 : 0.48))
@@ -99,6 +95,27 @@ struct PresenterConsoleView: View {
     }
 }
 
+private struct AdjustableSlidePreviewPair: View {
+    @EnvironmentObject private var store: PresentationStore
+
+    var body: some View {
+        GeometryReader { geometry in
+            let spacing: CGFloat = 12
+            let availableWidth = max(geometry.size.width - spacing, 0)
+            let nowWidth = availableWidth * min(max(store.nowNextSplitRatio, 0.2), 0.8)
+
+            HStack(spacing: spacing) {
+                SlidePreviewPanel(title: "Now", pageIndex: store.currentPageIndex, prominentTitle: true)
+                    .frame(width: nowWidth)
+
+                SlidePreviewPanel(title: "Next", pageIndex: store.currentPageIndex + 1, prominentTitle: true)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 struct ExternalDisplayRootView: View {
     @EnvironmentObject private var store: PresentationStore
 
@@ -145,7 +162,7 @@ private struct ThumbnailStripView: View {
                                     .fill(Color(.sRGB, white: 0.12, opacity: 1))
 
                                 if let document = store.pdfDocument {
-                                    PDFDocumentView(document: document, pageIndex: index, interactionEnabled: false)
+                                    PDFPagePreviewImage(document: document, pageIndex: index, maxPixelDimension: 520)
                                         .clipShape(RoundedRectangle(cornerRadius: 4))
                                 }
 
@@ -204,12 +221,13 @@ private struct SlidePreviewPanel: View {
     @EnvironmentObject private var store: PresentationStore
     let title: String
     let pageIndex: Int
+    var prominentTitle = false
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
                 if let document = store.pdfDocument, pageIndex >= 0, pageIndex < store.pageCount {
-                    PDFDocumentView(document: document, pageIndex: pageIndex, interactionEnabled: false)
+                    PDFPagePreviewImage(document: document, pageIndex: pageIndex, maxPixelDimension: 1440)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                 } else {
@@ -221,16 +239,16 @@ private struct SlidePreviewPanel: View {
                 VStack {
                     HStack {
                         Text(title)
-                            .font(.caption.weight(.semibold))
+                            .font(prominentTitle ? .system(size: 34, weight: .bold) : .caption.weight(.semibold))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, prominentTitle ? 18 : 8)
+                            .padding(.vertical, prominentTitle ? 10 : 4)
                             .background(.black.opacity(0.62), in: Capsule())
                         Spacer()
                     }
                     Spacer()
                 }
-                .padding(6)
+                .padding(prominentTitle ? 14 : 6)
             }
         }
         .background(.black)
@@ -477,6 +495,137 @@ private struct LapHistoryRow: View {
     }
 }
 
+private struct GearPopoverButton: View {
+    @EnvironmentObject private var store: PresentationStore
+    @Binding var showsLapHistory: Bool
+    @Binding var showsNotePinEditor: Bool
+    let showPDFPicker: () -> Void
+    let showProjectPicker: () -> Void
+    let showProjectExporter: () -> Void
+    let showNotesPicker: () -> Void
+    let showSettings: () -> Void
+    let showPencilSettings: () -> Void
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented.toggle()
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .font(.title2)
+                .frame(width: 54, height: 54)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .background(.black, in: Circle())
+        .overlay(Circle().stroke(.white.opacity(0.82), lineWidth: 2))
+        .accessibilityLabel("設定とファイル")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Text("プレゼン")
+                        .font(.headline)
+                        .foregroundStyle(store.noteDisplayMode == .off ? .white : .white.opacity(0.52))
+
+                    Toggle("", isOn: noteModeBinding)
+                        .labelsHidden()
+                        .tint(.blue)
+
+                    Text("原稿")
+                        .font(.headline)
+                        .foregroundStyle(store.noteDisplayMode == .off ? .white.opacity(0.52) : .white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(.sRGB, white: 0.1, opacity: 1), in: RoundedRectangle(cornerRadius: 8))
+
+                Divider()
+                    .overlay(.white.opacity(0.2))
+
+                SettingsPopoverAction(title: "PDFを選び直す", systemName: "doc") {
+                    isPresented = false
+                    showPDFPicker()
+                }
+
+                SettingsPopoverAction(title: "プロジェクトを開く", systemName: "folder") {
+                    isPresented = false
+                    showProjectPicker()
+                }
+
+                SettingsPopoverAction(title: "プロジェクトを書き出す", systemName: "square.and.arrow.up", disabled: !store.canExportProject) {
+                    isPresented = false
+                    showProjectExporter()
+                }
+
+                SettingsPopoverAction(title: "原稿を取り込む", systemName: "text.page") {
+                    isPresented = false
+                    showNotesPicker()
+                }
+
+                Divider()
+                    .overlay(.white.opacity(0.2))
+
+                SettingsPopoverAction(title: "Apple Pencil設定", systemName: "pencil.tip") {
+                    isPresented = false
+                    showPencilSettings()
+                }
+
+                SettingsPopoverAction(title: "設定", systemName: "gearshape") {
+                    isPresented = false
+                    showSettings()
+                }
+
+                SettingsPopoverAction(title: "タイマーをリセット", systemName: "arrow.counterclockwise") {
+                    isPresented = false
+                    store.resetTimer()
+                }
+            }
+            .padding(16)
+            .frame(width: 330)
+            .background(Color(.sRGB, white: 0.05, opacity: 1))
+            .preferredColorScheme(.dark)
+        }
+    }
+
+    private var noteModeBinding: Binding<Bool> {
+        Binding(
+            get: { store.noteDisplayMode != .off },
+            set: { isNoteMode in
+                withAnimation(.snappy(duration: 0.22)) {
+                    if isNoteMode != (store.noteDisplayMode != .off) {
+                        store.toggleNoteDisplayVisibility()
+                    }
+                    showsLapHistory = false
+                    showsNotePinEditor = false
+                }
+            }
+        )
+    }
+}
+
+private struct SettingsPopoverAction: View {
+    let title: String
+    let systemName: String
+    var disabled = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemName)
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(disabled ? .white.opacity(0.32) : .white)
+        .disabled(disabled)
+    }
+}
+
 private struct NoteEditorControlsBar: View {
     @EnvironmentObject private var store: PresentationStore
     @Binding var showsNotePinEditor: Bool
@@ -560,10 +709,6 @@ private struct NoteEditorControlsBar: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background(.black, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.blue, lineWidth: 4)
-        )
     }
 }
 
@@ -623,13 +768,19 @@ private struct BottomControlsBar: View {
             )
             .disabled(!store.canGoNext)
 
+            if store.noteDisplayMode == .off && !showsLapHistory {
+                NowNextRatioControl()
+            }
+
             Spacer(minLength: 18)
 
-            CircleToolbarButton(
-                systemName: "checkmark",
-                accessibilityLabel: "ラップタイムを記録",
-                action: store.recordLap
-            )
+            if store.isTimerRunning {
+                CircleToolbarButton(
+                    systemName: "checkmark",
+                    accessibilityLabel: "ラップタイムを記録",
+                    action: store.recordLap
+                )
+            }
 
             CircleToolbarButton(
                 systemName: showsLapHistory ? "text.alignleft" : "list.bullet.rectangle",
@@ -651,59 +802,70 @@ private struct BottomControlsBar: View {
                 action: store.toggleTimer
             )
 
-            CircleToolbarButton(
-                systemName: "arrow.counterclockwise",
-                accessibilityLabel: "秒数をリセット",
-                action: store.resetElapsedSeconds
-            )
-
             Spacer(minLength: 18)
 
-            CircleToolbarButton(
-                systemName: store.noteDisplayMode == .off ? "eye.slash" : "eye",
-                accessibilityLabel: store.noteDisplayMode == .off ? "原稿を表示" : "原稿を隠す",
-                tint: store.noteDisplayMode == .off ? .black : .blue.opacity(0.84),
-                stroke: store.noteDisplayMode == .off ? .white.opacity(0.82) : .blue.opacity(0.96)
-            ) {
-                withAnimation(.snappy(duration: 0.22)) {
-                    store.toggleNoteDisplayVisibility()
-                    showsLapHistory = false
-                    showsNotePinEditor = false
+            HStack(spacing: 10) {
+                if store.externalDisplayActive {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("connecting")
+                        Text(store.externalDisplayPixelSizeText ?? "detecting")
+                    }
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(Color.green.opacity(0.78))
+                    .padding(.horizontal, 12)
+                    .frame(height: 42)
+                    .background(.black, in: Capsule())
+                    .overlay(Capsule().stroke(Color.green.opacity(0.42), lineWidth: 1.5))
                 }
-            }
 
-            MenuToolbarButton(systemName: "gearshape.fill", accessibilityLabel: "設定とファイル") {
-                Button("PDFを選び直す", systemImage: "doc") {
-                    showPDFPicker()
-                }
-                Button("プロジェクトを開く", systemImage: "folder") {
-                    showProjectPicker()
-                }
-                Button("プロジェクトを書き出す", systemImage: "square.and.arrow.up") {
-                    showProjectExporter()
-                }
-                .disabled(!store.canExportProject)
-                Button("原稿を取り込む", systemImage: "text.page") {
-                    showNotesPicker()
-                }
-                Button("Apple Pencil設定", systemImage: "pencil.tip") {
-                    showPencilSettings()
-                }
-                Button("設定", systemImage: "gearshape") {
-                    showSettings()
-                }
-                Button("タイマーをリセット", systemImage: "arrow.counterclockwise") {
-                    store.resetTimer()
-                }
+                GearPopoverButton(
+                    showsLapHistory: $showsLapHistory,
+                    showsNotePinEditor: $showsNotePinEditor,
+                    showPDFPicker: showPDFPicker,
+                    showProjectPicker: showProjectPicker,
+                    showProjectExporter: showProjectExporter,
+                    showNotesPicker: showNotesPicker,
+                    showSettings: showSettings,
+                    showPencilSettings: showPencilSettings
+                )
+
             }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background(.black, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.blue, lineWidth: 4)
-        )
+    }
+}
+
+private struct NowNextRatioControl: View {
+    @EnvironmentObject private var store: PresentationStore
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Now")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.78))
+
+            Slider(
+                value: Binding(
+                    get: { store.nowNextSplitRatio },
+                    set: { store.nowNextSplitRatio = min(max($0, 0.2), 0.8) }
+                ),
+                in: 0.2...0.8,
+                step: 0.01
+            )
+            .frame(width: 220)
+            .tint(.blue)
+
+            Text("Next")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.78))
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 46)
+        .background(.black, in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.82), lineWidth: 2))
+        .accessibilityLabel("NowとNextの表示比率")
     }
 }

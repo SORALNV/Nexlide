@@ -105,6 +105,12 @@ private struct ApplePencilSettingsSection: View {
                 }
             }
 
+            Toggle("スクイーズ長押しで連続実行", isOn: $store.squeezeHoldRepeatEnabled)
+
+            Text("初期値はOFFです。ONにすると、Apple Pencil Proのスクイーズを押し続けている間、スクイーズに割り当てたページ操作を繰り返します。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("検出状態")
                     .font(.caption)

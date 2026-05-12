@@ -114,7 +114,6 @@
 				67F66A2580E2E113CD8D070A /* Info.plist */,
 				8746084CE5BDF8F2DF6F4A0C /* Assets.xcassets */,
 			);
-			name = Nexlide;
 			path = Nexlide;
 			sourceTree = "<group>";
 		};
@@ -146,6 +145,12 @@
 			attributes = {
 				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					82D89E08EC4FDC6446A7E8FE = {
+						DevelopmentTeam = 3LATMLX95H;
+						ProvisioningStyle = Automatic;
+					};
+				};
 			};
 			buildConfigurationList = C4AD34BEC3B246A58779F4B7 /* Build configuration list for PBXProject "Nexlide" */;
 			compatibilityVersion = "Xcode 3.2";
@@ -156,8 +161,6 @@
 				Base,
 			);
 			mainGroup = D6A227AE50FA787EFA382BAF;
-			minimizedProjectReferenceProxies = 0;
-			preferredProjectObjectVersion = 77;
 			productRefGroup = 6B06B834FCFAB964A1C8496E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -267,10 +270,11 @@
 		B5BA6CDF4294102AD5204FE3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 3LATMLX95H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Nexlide/Info.plist;
@@ -339,9 +343,8 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -349,10 +352,11 @@
 		DE955B3946ADFF8A4B9FDAA8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 3LATMLX95H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Nexlide/Info.plist;

@@ -26,6 +26,7 @@ struct PencilInteractionOverlay: UIViewRepresentable {
     final class Coordinator: NSObject, UIPencilInteractionDelegate {
         weak var store: PresentationStore?
         private var lastEventTime: TimeInterval = 0
+        private var squeezeRepeatTask: Task<Void, Never>?
 
         init(store: PresentationStore) {
             self.store = store
@@ -43,17 +44,48 @@ struct PencilInteractionOverlay: UIViewRepresentable {
 
         // The squeeze API is available on Apple Pencil Pro and only on supported iPadOS/devices.
         func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
-            handle(.squeeze)
+            switch squeeze.phase {
+            case .began:
+                handle(.squeeze)
+                beginSqueezeRepeatIfNeeded()
+            case .changed:
+                break
+            case .ended, .cancelled:
+                stopSqueezeRepeat()
+            @unknown default:
+                stopSqueezeRepeat()
+            }
         }
 
         private func handle(_ inputKind: PencilInputKind) {
             let now = CACurrentMediaTime()
-            guard now - lastEventTime > 0.55 else { return }
+            guard now - lastEventTime > 0.16 else { return }
             lastEventTime = now
 
             Task { @MainActor in
                 self.store?.performPencilAction(inputKind)
             }
+        }
+
+        private func beginSqueezeRepeatIfNeeded() {
+            guard store?.squeezeHoldRepeatEnabled == true else { return }
+
+            stopSqueezeRepeat()
+            squeezeRepeatTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(520))
+
+                while !Task.isCancelled {
+                    await MainActor.run {
+                        self?.store?.performPencilAction(.squeeze)
+                    }
+                    try? await Task.sleep(for: .milliseconds(260))
+                }
+            }
+        }
+
+        private func stopSqueezeRepeat() {
+            squeezeRepeatTask?.cancel()
+            squeezeRepeatTask = nil
         }
     }
 

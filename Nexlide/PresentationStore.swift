@@ -89,6 +89,7 @@ struct NexlideProjectManifest: Codable {
     var lapRecords: [LapRecord]
     var noteDisplayMode: NoteDisplayMode
     var noteFontSize: Double
+    var nowNextSplitRatio: Double?
 }
 
 @MainActor
@@ -102,6 +103,7 @@ final class PresentationStore: ObservableObject {
     @Published var currentPageIndex = 0
     @Published var notesByPage: [Int: String] = [:]
     @Published var externalDisplayActive = false
+    @Published var externalDisplayPixelSizeText: String?
     @Published var isTimerRunning = false
     @Published var elapsedSeconds = 0
     @Published var lapRecords: [LapRecord] = []
@@ -112,13 +114,20 @@ final class PresentationStore: ObservableObject {
             if noteDisplayMode != .off {
                 defaults.set(noteDisplayMode.rawValue, forKey: Keys.lastVisibleNoteDisplayMode)
             }
-            saveProjectPackage()
+            scheduleProjectAutosave()
         }
     }
     @Published var noteFontSize: Double {
         didSet {
             defaults.set(noteFontSize, forKey: Keys.noteFontSize)
-            saveProjectPackage()
+            scheduleProjectAutosave()
+        }
+    }
+
+    @Published var nowNextSplitRatio: Double {
+        didSet {
+            defaults.set(nowNextSplitRatio, forKey: Keys.nowNextSplitRatio)
+            scheduleProjectAutosave()
         }
     }
 
@@ -130,6 +139,10 @@ final class PresentationStore: ObservableObject {
         didSet { defaults.set(squeezeAction.rawValue, forKey: Keys.squeezeAction) }
     }
 
+    @Published var squeezeHoldRepeatEnabled: Bool {
+        didSet { defaults.set(squeezeHoldRepeatEnabled, forKey: Keys.squeezeHoldRepeatEnabled) }
+    }
+
     @Published var externalDisplayMode: ExternalDisplayMode {
         didSet { defaults.set(externalDisplayMode.rawValue, forKey: Keys.externalDisplayMode) }
     }
@@ -137,16 +150,19 @@ final class PresentationStore: ObservableObject {
     private enum Keys {
         static let doubleTapAction = "pencil.doubleTapAction"
         static let squeezeAction = "pencil.squeezeAction"
+        static let squeezeHoldRepeatEnabled = "pencil.squeezeHoldRepeatEnabled"
         static let externalDisplayMode = "externalDisplay.mode"
         static let noteDisplayMode = "notes.displayMode"
         static let lastVisibleNoteDisplayMode = "notes.lastVisibleDisplayMode"
         static let noteFontSize = "notes.fontSize"
+        static let nowNextSplitRatio = "preview.nowNextSplitRatio"
         static let notesPrefix = "notes."
         static let lapsPrefix = "laps."
     }
 
     private let defaults = UserDefaults.standard
     private var timer: Timer?
+    private var projectSaveTask: Task<Void, Never>?
     private let projectPDFFileName = "presentation.pdf"
     private let projectManifestFileName = "manifest.json"
 
@@ -189,12 +205,15 @@ final class PresentationStore: ObservableObject {
         let savedExternalMode = defaults.string(forKey: Keys.externalDisplayMode)
         let savedNoteDisplayMode = defaults.string(forKey: Keys.noteDisplayMode)
         let savedNoteFontSize = defaults.double(forKey: Keys.noteFontSize)
+        let savedNowNextSplitRatio = defaults.double(forKey: Keys.nowNextSplitRatio)
 
         doubleTapAction = NexlideAction(rawValue: savedDoubleTap ?? "") ?? .nextPage
         squeezeAction = NexlideAction(rawValue: savedSqueeze ?? "") ?? .nextPage
+        squeezeHoldRepeatEnabled = defaults.bool(forKey: Keys.squeezeHoldRepeatEnabled)
         externalDisplayMode = ExternalDisplayMode(rawValue: savedExternalMode ?? "") ?? .slideOnly
         noteDisplayMode = NoteDisplayMode(rawValue: savedNoteDisplayMode ?? "") ?? .markdown
         noteFontSize = savedNoteFontSize == 0 ? 28 : savedNoteFontSize
+        nowNextSplitRatio = savedNowNextSplitRatio == 0 ? 0.5 : min(max(savedNowNextSplitRatio, 0.2), 0.8)
     }
 
     func toggleNoteDisplayVisibility() {
@@ -257,19 +276,19 @@ final class PresentationStore: ObservableObject {
     func goToPage(_ index: Int) {
         guard pageCount > 0 else { return }
         currentPageIndex = min(max(index, 0), pageCount - 1)
-        saveProjectPackage()
+        scheduleProjectAutosave()
     }
 
     func goNext() {
         guard canGoNext else { return }
         currentPageIndex += 1
-        saveProjectPackage()
+        scheduleProjectAutosave()
     }
 
     func goPrevious() {
         guard canGoPrevious else { return }
         currentPageIndex -= 1
-        saveProjectPackage()
+        scheduleProjectAutosave()
     }
 
     func performPencilAction(_ inputKind: PencilInputKind) {
@@ -343,7 +362,6 @@ final class PresentationStore: ObservableObject {
         }
         notesByPage = imported
         saveNotes()
-        saveProjectPackage()
     }
 
     static func splitNotes(_ text: String) -> [String] {
@@ -431,9 +449,23 @@ final class PresentationStore: ObservableObject {
     }
 
     func updateExternalDisplayStatus() {
-        externalDisplayActive = UIApplication.shared.connectedScenes.contains {
+        let externalWindowScene = UIApplication.shared.connectedScenes.first {
             $0.session.role == .windowExternalDisplayNonInteractive
+        } as? UIWindowScene
+
+        externalDisplayActive = externalWindowScene != nil
+        if let externalWindowScene {
+            updateExternalDisplayPixelSize(from: externalWindowScene)
+        } else {
+            externalDisplayPixelSizeText = nil
         }
+    }
+
+    func updateExternalDisplayPixelSize(from windowScene: UIWindowScene) {
+        let nativeBounds = windowScene.screen.nativeBounds
+        let width = Int(nativeBounds.width.rounded())
+        let height = Int(nativeBounds.height.rounded())
+        externalDisplayPixelSizeText = "\(width)×\(height)"
     }
 
     private func loadNotes() {
@@ -457,7 +489,7 @@ final class PresentationStore: ObservableObject {
         guard let key = notesKey else { return }
         guard let data = try? JSONEncoder().encode(notesByPage) else { return }
         defaults.set(data, forKey: key)
-        saveProjectPackage()
+        scheduleProjectAutosave()
     }
 
     private func loadLapRecords() {
@@ -481,10 +513,12 @@ final class PresentationStore: ObservableObject {
         guard let key = lapRecordsKey else { return }
         guard let data = try? JSONEncoder().encode(lapRecords) else { return }
         defaults.set(data, forKey: key)
-        saveProjectPackage()
+        scheduleProjectAutosave()
     }
 
     func saveProjectPackage() {
+        projectSaveTask?.cancel()
+        projectSaveTask = nil
         guard let projectPackageURL, pdfURL != nil else { return }
 
         let manifest = NexlideProjectManifest(
@@ -497,11 +531,25 @@ final class PresentationStore: ObservableObject {
             notesByPage: notesByPage,
             lapRecords: lapRecords,
             noteDisplayMode: noteDisplayMode,
-            noteFontSize: noteFontSize
+            noteFontSize: noteFontSize,
+            nowNextSplitRatio: nowNextSplitRatio
         )
 
         guard let data = try? JSONEncoder.projectEncoder.encode(manifest) else { return }
         try? data.write(to: projectPackageURL.appendingPathComponent(projectManifestFileName), options: [.atomic])
+    }
+
+    private func scheduleProjectAutosave() {
+        guard projectPackageURL != nil else { return }
+        projectSaveTask?.cancel()
+        projectSaveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.projectSaveTask = nil
+                self?.saveProjectPackage()
+            }
+        }
     }
 
     private func loadProjectPackage(from packageURL: URL) {
@@ -522,6 +570,9 @@ final class PresentationStore: ObservableObject {
         lapRecords = manifest.lapRecords
         noteDisplayMode = manifest.noteDisplayMode
         noteFontSize = manifest.noteFontSize
+        if let nowNextSplitRatio = manifest.nowNextSplitRatio {
+            self.nowNextSplitRatio = min(max(nowNextSplitRatio, 0.2), 0.8)
+        }
         currentPageIndex = min(max(manifest.currentPageIndex, 0), max(document.pageCount - 1, 0))
         resetElapsedSeconds()
         saveNotes()
