@@ -76,10 +76,18 @@ struct PresenterConsoleView: View {
     }
 
     private func slidePreviewColumn(width: CGFloat) -> some View {
-        VStack(spacing: 10) {
-            SlidePreviewPanel(title: "Now", pageIndex: store.currentPageIndex)
+        GeometryReader { geometry in
+            let spacing: CGFloat = 10
+            let availableHeight = max(geometry.size.height - spacing, 0)
+            let nowHeight = availableHeight * min(max(store.nowNextSplitRatio, 0.2), 0.8)
 
-            SlidePreviewPanel(title: "Next", pageIndex: store.currentPageIndex + 1)
+            VStack(spacing: spacing) {
+                SlidePreviewPanel(title: "Now", pageIndex: store.currentPageIndex)
+                    .frame(height: nowHeight)
+
+                SlidePreviewPanel(title: "Next", pageIndex: store.currentPageIndex + 1)
+                    .frame(maxHeight: .infinity)
+            }
         }
         .frame(width: width)
         .frame(maxHeight: .infinity)
@@ -768,10 +776,6 @@ private struct BottomControlsBar: View {
             )
             .disabled(!store.canGoNext)
 
-            if store.noteDisplayMode == .off && !showsLapHistory {
-                NowNextRatioControl()
-            }
-
             Spacer(minLength: 18)
 
             if store.isTimerRunning {
@@ -835,37 +839,5 @@ private struct BottomControlsBar: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background(.black, in: RoundedRectangle(cornerRadius: 10))
-    }
-}
-
-private struct NowNextRatioControl: View {
-    @EnvironmentObject private var store: PresentationStore
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text("Now")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white.opacity(0.78))
-
-            Slider(
-                value: Binding(
-                    get: { store.nowNextSplitRatio },
-                    set: { store.nowNextSplitRatio = min(max($0, 0.2), 0.8) }
-                ),
-                in: 0.2...0.8,
-                step: 0.01
-            )
-            .frame(width: 220)
-            .tint(.blue)
-
-            Text("Next")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white.opacity(0.78))
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 46)
-        .background(.black, in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.82), lineWidth: 2))
-        .accessibilityLabel("NowとNextの表示比率")
     }
 }

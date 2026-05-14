@@ -8,8 +8,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                ApplePencilSettingsSection()
-
                 Section("外部ディスプレイ") {
                     Picker("外部画面", selection: $store.externalDisplayMode) {
                         ForEach(ExternalDisplayMode.allCases) { mode in
@@ -46,9 +44,28 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("システムのPencil設定") {
-                    LabeledContent("ダブルタップ設定", value: String(describing: UIPencilInteraction.preferredTapAction))
-                    LabeledContent("スクイーズ設定", value: "Apple Pencil Pro / 対応OS依存")
+                Section("Now / Next プレビュー") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Nowの表示比率")
+                            Spacer()
+                            Text("\(Int(store.nowNextSplitRatio * 100))%")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Slider(
+                            value: Binding(
+                                get: { store.nowNextSplitRatio },
+                                set: { store.nowNextSplitRatio = min(max($0, 0.2), 0.8) }
+                            ),
+                            in: 0.2...0.8,
+                            step: 0.01
+                        )
+                    }
+
+                    Text("原稿表示中は左側のNow/Nextの高さ配分、プレゼンのみではNow/Nextの横幅配分に反映されます。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("設定")
